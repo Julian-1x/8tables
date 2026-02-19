@@ -10,6 +10,23 @@ if (!isset($_SESSION['username']) || !isset($_SESSION['logged_in']) || $_SESSION
 $database = new Database();
 $db = $database->getConnection();
 
+function getFixedReportHouseNumbers(): array
+{
+    $lots = [];
+    for ($block = 1; $block <= 5; $block++) {
+        for ($lot = 1; $lot <= 6; $lot++) {
+            $lots[] = sprintf('Block %02d Lot %02d', $block, $lot);
+        }
+    }
+    for ($lot = 1; $lot <= 5; $lot++) {
+        $lots[] = sprintf('Block 06 Lot %02d', $lot);
+    }
+    return $lots;
+}
+
+$fixedHouseNumbers = getFixedReportHouseNumbers();
+$TOTAL_FIXED_LOTS = count($fixedHouseNumbers);
+
 // Get data from database
 $houses = [];
 $residents = [];
@@ -19,11 +36,36 @@ $vehicles = [];
 $error = "";
 
 try {
-    // Get houses
-    $query = "SELECT * FROM houses WHERE is_deleted = 0 ORDER BY house_number";
+    // Get fixed houses only
+    $placeholders = implode(',', array_fill(0, count($fixedHouseNumbers), '?'));
+    $orderPlaceholders = implode(',', array_fill(0, count($fixedHouseNumbers), '?'));
+    $query = "SELECT *
+              FROM houses
+              WHERE is_deleted = 0
+                AND house_number IN ($placeholders)
+              ORDER BY FIELD(house_number, $orderPlaceholders)";
     $stmt = $db->prepare($query);
-    $stmt->execute();
-    $houses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute(array_merge($fixedHouseNumbers, $fixedHouseNumbers));
+    $dbHouses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $houseMap = [];
+    foreach ($dbHouses as $house) {
+        $houseMap[$house['house_number']] = $house;
+    }
+
+    foreach ($fixedHouseNumbers as $houseNumber) {
+        $house = $houseMap[$houseNumber] ?? null;
+        if ($house) {
+            $houses[] = $house;
+        } else {
+            $houses[] = [
+                'house_number' => $houseNumber,
+                'owner_name' => '',
+                'status' => 'Vacant',
+                'contact_number' => null
+            ];
+        }
+    }
 
     // Get residents with house info
     $query = "SELECT r.*, h.house_number 
@@ -61,7 +103,7 @@ try {
 
 // Calculate statistics
 $total_residents = count($residents);
-$total_houses = count($houses);
+$total_houses = $TOTAL_FIXED_LOTS;
 $total_vehicles = count($vehicles);
 
 // Calculate house status counts

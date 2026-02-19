@@ -3,6 +3,8 @@ session_start();
 require_once 'config/database.php';
 require_once __DIR__ . '/models/Resident.php';
 require_once __DIR__ . '/models/House.php';
+require_once __DIR__ . '/includes/house_options.php';
+require_once __DIR__ . '/includes/house_validation.php';
 
 if (!isset($_SESSION['username']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: Login/login.php");
@@ -38,6 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_resident'])) {
     // Input validation
     if (empty($name) || empty($house_id) || empty($relationship)) {
         $error = "Please fill in all required fields!";
+    } elseif (!isHouseOccupied($db, (int) $house_id)) {
+        $error = "Cannot add resident to an empty/vacant house. Assign a house owner first.";
     } else {
         try {
             $residentId = $residentModel->create($name, $phone, $house_id, $relationship);
@@ -61,6 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_resident'])) {
 
     if (empty($id) || empty($name) || empty($house_id) || empty($relationship)) {
         $error = "Please fill in all required fields!";
+    } elseif (!isHouseOccupied($db, (int) $house_id)) {
+        $error = "Cannot assign resident to an empty/vacant house. Assign a house owner first.";
     } else {
         try {
             $updated = $residentModel->update($id, $name, $phone, $house_id, $relationship);
@@ -105,8 +111,10 @@ try {
 
 // Get houses for dropdown
 $houses = [];
+$houseGroups = [];
 try {
-    $houses = $houseModel->listActiveForSelect();
+    $houses = $houseModel->listOccupiedForSelect();
+    $houseGroups = groupHousesForDropdown($houses);
 } catch(PDOException $exception) {
     $error = "Error loading houses: " . $exception->getMessage();
 }
@@ -299,11 +307,10 @@ try {
                             <label>House *</label>
                             <select name="house_id" required style="width: 100%;">
                                 <option value="">Select House</option>
-                                <?php foreach ($houses as $house): ?>
-                                    <option value="<?php echo $house['id']; ?>" <?php echo (isset($_POST['house_id']) && $_POST['house_id'] == $house['id']) || ($edit_resident && $edit_resident['house_id'] == $house['id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($house['house_number']); ?> - <?php echo htmlspecialchars($house['owner_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
+                                <?php
+                                $selectedHouseId = $_POST['house_id'] ?? ($edit_resident['house_id'] ?? '');
+                                renderHouseOptions($houseGroups, $selectedHouseId);
+                                ?>
                             </select>
                         </div>
                         

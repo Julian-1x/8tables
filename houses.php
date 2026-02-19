@@ -13,66 +13,100 @@ $db = $database->getConnection();
 $success = "";
 $error = "";
 
-// Handle Add House
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_house'])) {
-    $house_number = trim($_POST['house_number']);
-    $owner_name = trim($_POST['owner_name']);
-    $status = $_POST['status'];
+function getFixedHouseNumbers(): array
+{
+    $houses = [];
+    for ($block = 1; $block <= 5; $block++) {
+        for ($lot = 1; $lot <= 6; $lot++) {
+            $houses[] = sprintf('Block %02d Lot %02d', $block, $lot);
+        }
+    }
+    for ($lot = 1; $lot <= 5; $lot++) {
+        $houses[] = sprintf('Block 06 Lot %02d', $lot);
+    }
+    return $houses;
+}
 
-    // Input validation
-    if (empty($house_number) || empty($owner_name) || empty($status)) {
-        $error = "Please fill in all fields!";
+$fixedHouseNumbers = getFixedHouseNumbers();
+
+// Ensure the 30 fixed houses exist in DB.
+try {
+    $placeholders = implode(',', array_fill(0, count($fixedHouseNumbers), '?'));
+    $stmt = $db->prepare("SELECT house_number FROM houses WHERE house_number IN ($placeholders)");
+    $stmt->execute($fixedHouseNumbers);
+    $existing = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    $existingMap = array_flip($existing);
+
+    $insertQuery = "INSERT INTO houses (house_number, owner_name, status, created_at) VALUES (:house_number, :owner_name, :status, NOW())";
+    $insertStmt = $db->prepare($insertQuery);
+
+    foreach ($fixedHouseNumbers as $houseNumber) {
+        if (!isset($existingMap[$houseNumber])) {
+            $insertStmt->execute([
+                ':house_number' => $houseNumber,
+                ':owner_name' => '',
+                ':status' => 'Vacant'
+            ]);
+        }
+    }
+} catch (PDOException $exception) {
+    $error = "Error preparing fixed houses.";
+    error_log("Fixed houses setup error: " . $exception->getMessage());
+}
+
+// Handle owner assignment update.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_owner'])) {
+    $id = (int) ($_POST['id'] ?? 0);
+    $ownerName = trim($_POST['owner_name'] ?? '');
+    $status = $ownerName !== '' ? 'Occupied' : 'Vacant';
+
+    if ($id <= 0) {
+        $error = "Invalid house selection.";
     } else {
         try {
-            $query = "INSERT INTO houses (house_number, owner_name, status, created_at) VALUES (:house_number, :owner_name, :status, NOW())";
+            $query = "UPDATE houses
+                      SET owner_name = :owner_name, status = :status, updated_at = NOW()
+                      WHERE id = :id AND is_deleted = 0";
             $stmt = $db->prepare($query);
-            $stmt->bindParam(":house_number", $house_number);
-            $stmt->bindParam(":owner_name", $owner_name);
-            $stmt->bindParam(":status", $status);
-            
-            if ($stmt->execute()) {
-                $success = "House added successfully!";
-                addAuditLog($db, $_SESSION['user_id'], 'ADD_HOUSE', "Added house: $house_number - Owner: $owner_name");
-            }
-        } catch(PDOException $exception) {
-            if ($exception->getCode() == 23000) {
-                $error = "House number already exists!";
+            $stmt->execute([
+                ':owner_name' => $ownerName,
+                ':status' => $status,
+                ':id' => $id
+            ]);
+
+            if ($stmt->rowCount() > 0) {
+                $success = "House owner assignment updated.";
+                addAuditLog(
+                    $db,
+                    $_SESSION['user_id'],
+                    'UPDATE_HOUSE_OWNER',
+                    "Updated owner assignment for house ID: $id"
+                );
             } else {
-                $error = "Error adding house: " . $exception->getMessage();
+                $success = "No changes were needed.";
             }
+        } catch (PDOException $exception) {
+            $error = "Error updating owner assignment.";
+            error_log("House owner update error: " . $exception->getMessage());
         }
     }
 }
 
-// Handle Soft Delete
-if (isset($_GET['delete'])) {
-    $id = $_GET['delete'];
-    
-    try {
-        $query = "UPDATE houses SET is_deleted = 1, deleted_at = NOW() WHERE id = :id AND is_deleted = 0";
-        $stmt = $db->prepare($query);
-        $stmt->bindParam(":id", $id);
-        
-        if ($stmt->execute() && $stmt->rowCount() > 0) {
-            $success = "House deleted successfully!";
-            addAuditLog($db, $_SESSION['user_id'], 'SOFT_DELETE_HOUSE', "Soft deleted house ID: $id");
-        } else {
-            $error = "House not found or already deleted!";
-        }
-    } catch(PDOException $exception) {
-        $error = "Error deleting house: " . $exception->getMessage();
-    }
-}
-
-// Get all active houses
+// Load only fixed houses in fixed order.
 $houses = [];
 try {
-    $query = "SELECT * FROM houses WHERE is_deleted = 0 ORDER BY house_number";
+    $placeholders = implode(',', array_fill(0, count($fixedHouseNumbers), '?'));
+    $orderPlaceholders = implode(',', array_fill(0, count($fixedHouseNumbers), '?'));
+    $query = "SELECT id, house_number, owner_name, status
+              FROM houses
+              WHERE is_deleted = 0 AND house_number IN ($placeholders)
+              ORDER BY FIELD(house_number, $orderPlaceholders)";
     $stmt = $db->prepare($query);
-    $stmt->execute();
+    $stmt->execute(array_merge($fixedHouseNumbers, $fixedHouseNumbers));
     $houses = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch(PDOException $exception) {
-    $error = "Error loading houses: " . $exception->getMessage();
+} catch (PDOException $exception) {
+    $error = "Error loading fixed houses.";
+    error_log("Fixed houses load error: " . $exception->getMessage());
 }
 ?>
 
@@ -84,82 +118,28 @@ try {
     <title>Houses Management - Subdivision Management</title>
     <link rel="stylesheet" href="assets/css/style.css">
     <style>
-        .house-form { 
-            background: white; 
-            padding: 25px; 
-            border-radius: 10px; 
-            margin-bottom: 30px; 
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .house-form h3 {
-            margin-top: 0;
-            color: #2c3e50;
-            margin-bottom: 20px;
-        }
-        .house-form input, .house-form select { 
-            padding: 12px; 
-            margin: 8px 5px; 
-            border: 2px solid #ddd; 
-            border-radius: 5px; 
-            width: 200px;
-            font-size: 16px;
-        }
-        .house-form input:focus, .house-form select:focus {
-            border-color: #3498db;
-            outline: none;
-        }
-        .house-form button { 
-            background: #27ae60; 
-            color: white; 
-            padding: 12px 25px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-        .house-form button:hover { 
-            background: #219150;
-        }
-        .house-table { 
-            width: 100%; 
-            border-collapse: collapse; 
+        .house-table {
+            width: 100%;
+            border-collapse: collapse;
             margin-top: 20px;
             background: white;
             border-radius: 10px;
             overflow: hidden;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        .house-table th, .house-table td { 
-            border: 1px solid #ddd; 
-            padding: 15px; 
-            text-align: left; 
+        .house-table th, .house-table td {
+            border: 1px solid #ddd;
+            padding: 14px;
+            text-align: left;
+            vertical-align: middle;
         }
-        .house-table th { 
-            background-color: #2c3e50; 
+        .house-table th {
+            background-color: #2c3e50;
             color: white;
             font-weight: bold;
         }
         .house-table tr:nth-child(even) {
             background-color: #f8f9fa;
-        }
-        .house-table tr:hover {
-            background-color: #f1f2f6;
-        }
-        .delete-btn { 
-            background: #e74c3c; 
-            color: white; 
-            padding: 8px 15px; 
-            text-decoration: none; 
-            border-radius: 5px;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s;
-        }
-        .delete-btn:hover { 
-            background: #c0392b;
         }
         .status-badge {
             padding: 5px 10px;
@@ -175,20 +155,20 @@ try {
             background: #fff3cd;
             color: #856404;
         }
-        .success-msg { 
-            background: #d4edda; 
-            color: #155724; 
-            padding: 15px; 
-            border-radius: 5px; 
-            margin-bottom: 20px; 
+        .success-msg {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
             border: 1px solid #c3e6cb;
         }
-        .error-msg { 
-            background: #f8d7da; 
-            color: #721c24; 
-            padding: 15px; 
-            border-radius: 5px; 
-            margin-bottom: 20px; 
+        .error-msg {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
             border: 1px solid #f5c6cb;
         }
         .page-header {
@@ -196,6 +176,39 @@ try {
             justify-content: space-between;
             align-items: center;
             margin-bottom: 30px;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #3498db;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            color: #1f2937;
+        }
+        .owner-form {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .owner-input {
+            width: 100%;
+            min-width: 220px;
+            padding: 9px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+        }
+        .save-btn {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 9px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        .save-btn:hover {
+            background: #1d4ed8;
         }
     </style>
 </head>
@@ -205,74 +218,60 @@ try {
 
         <div class="main-content">
             <div class="page-header">
-                <h1>🏠 Houses Management</h1>
-                <div class="total-count">Total Houses: <strong><?php echo count($houses); ?></strong></div>
+                <h1>Houses Management</h1>
+                <div class="total-count">Fixed Houses: <strong><?php echo count($houses); ?></strong></div>
             </div>
 
             <?php if (!empty($success)): ?>
                 <div class="success-msg"><?php echo htmlspecialchars($success); ?></div>
             <?php endif; ?>
-            
+
             <?php if (!empty($error)): ?>
                 <div class="error-msg"><?php echo htmlspecialchars($error); ?></div>
             <?php endif; ?>
 
-            <!-- Add House Form -->
-            <div class="house-form">
-                <h3>➕ Add New House</h3>
-                <form method="POST">
-                    <input type="text" name="house_number" placeholder="House Number" required 
-                           value="<?php echo isset($_POST['house_number']) ? htmlspecialchars($_POST['house_number']) : ''; ?>">
-                    <input type="text" name="owner_name" placeholder="Owner Name" required
-                           value="<?php echo isset($_POST['owner_name']) ? htmlspecialchars($_POST['owner_name']) : ''; ?>">
-                    <select name="status" required>
-                        <option value="">Select Status</option>
-                        <option value="Occupied" <?php echo (isset($_POST['status']) && $_POST['status'] == 'Occupied') ? 'selected' : ''; ?>>Occupied</option>
-                        <option value="Vacant" <?php echo (isset($_POST['status']) && $_POST['status'] == 'Vacant') ? 'selected' : ''; ?>>Vacant</option>
-                    </select>
-                    <button type="submit" name="add_house">Add House</button>
-                </form>
+            <div class="info-box">
+                Fixed subdivision setup is active. House lots are fixed (35 total). You can only assign/update the owner.
+                Status updates automatically: owner set = Occupied, empty owner = Vacant.
             </div>
 
-            <!-- Houses Table -->
-            <h3>📋 House List</h3>
-            <?php if (!empty($houses)): ?>
-                <table class="house-table">
-                    <thead>
+            <table class="house-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Fixed House Lot</th>
+                        <th>Owner Assignment</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($houses as $index => $house): ?>
+                        <?php $status = ($house['status'] ?? 'Vacant') === 'Occupied' ? 'Occupied' : 'Vacant'; ?>
                         <tr>
-                            <th>#</th>
-                            <th>House Number</th>
-                            <th>Owner Name</th>
-                            <th>Status</th>
-                            <th>Actions</th>
+                            <td><?php echo $index + 1; ?></td>
+                            <td><strong><?php echo htmlspecialchars($house['house_number']); ?></strong></td>
+                            <td>
+                                <form method="POST" class="owner-form">
+                                    <input type="hidden" name="id" value="<?php echo (int) $house['id']; ?>">
+                                    <input
+                                        type="text"
+                                        name="owner_name"
+                                        class="owner-input"
+                                        placeholder="Enter owner name (leave blank for vacant)"
+                                        value="<?php echo htmlspecialchars($house['owner_name'] ?? ''); ?>"
+                                    >
+                                    <button type="submit" name="update_owner" class="save-btn">Save</button>
+                                </form>
+                            </td>
+                            <td>
+                                <span class="status-badge status-<?php echo strtolower($status); ?>">
+                                    <?php echo $status; ?>
+                                </span>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($houses as $index => $house): ?>
-                            <tr>
-                                <td><?php echo $index + 1; ?></td>
-                                <td><?php echo htmlspecialchars($house['house_number']); ?></td>
-                                <td><?php echo htmlspecialchars($house['owner_name']); ?></td>
-                                <td>
-                                    <span class="status-badge status-<?php echo strtolower($house['status']); ?>">
-                                        <?php echo htmlspecialchars($house['status']); ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <a href="?delete=<?php echo $house['id']; ?>" class="delete-btn" 
-                                       onclick="return confirm('Are you sure you want to delete house <?php echo htmlspecialchars($house['house_number']); ?>? This action cannot be undone.')">
-                                       🗑️ Delete
-                                    </a>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <div style="text-align: center; padding: 40px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                    <p style="font-size: 18px; color: #7f8c8d;">No houses found. Add your first house using the form above.</p>
-                </div>
-            <?php endif; ?>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 

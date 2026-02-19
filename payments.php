@@ -3,6 +3,8 @@ session_start();
 require_once 'config/database.php';
 require_once __DIR__ . '/models/Payment.php';
 require_once __DIR__ . '/models/House.php';
+require_once __DIR__ . '/includes/house_options.php';
+require_once __DIR__ . '/includes/house_validation.php';
 
 if (!isset($_SESSION['username']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: Login/login.php");
@@ -44,6 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_payment'])) {
     // Input validation
     if (empty($house_id) || empty($amount) || empty($payment_date) || empty($due_month) || empty($payment_type) || empty($status)) {
         $error = "Please fill in all required fields!";
+    } elseif (!isHouseOccupied($db, (int) $house_id)) {
+        $error = "Cannot record payment for an empty/vacant house. Assign a house owner first.";
     } else {
         try {
             $query = "INSERT INTO payments (house_id, amount, payment_date, due_month, payment_type, status, description, created_at) 
@@ -80,6 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_payment'])) {
 
     if (empty($id) || empty($house_id) || empty($amount) || empty($payment_date) || empty($due_month) || empty($payment_type) || empty($status)) {
         $error = "Please fill in all required fields!";
+    } elseif (!isHouseOccupied($db, (int) $house_id)) {
+        $error = "Cannot assign payment to an empty/vacant house. Assign a house owner first.";
     } else {
         try {
             $updated = $paymentModel->update($id, $house_id, $amount, $payment_date, $due_month, $payment_type, $status, $description);
@@ -134,11 +140,10 @@ try {
 
 // Get houses for dropdown
 $houses = [];
+$houseGroups = [];
 try {
-    $query = "SELECT id, house_number, owner_name FROM houses WHERE is_deleted = 0 ORDER BY house_number";
-    $stmt = $db->prepare($query);
-    $stmt->execute();
-    $houses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $houses = $houseModel->listOccupiedForSelect();
+    $houseGroups = groupHousesForDropdown($houses);
 } catch(PDOException $exception) {
     $error = "Error loading houses: " . $exception->getMessage();
 }
@@ -319,11 +324,10 @@ for ($i = 0; $i < 12; $i++) {
                             <label>House *</label>
                             <select name="house_id" required style="width: 100%;">
                                 <option value="">Select House</option>
-                                <?php foreach ($houses as $house): ?>
-                                    <option value="<?php echo $house['id']; ?>" <?php echo (isset($_POST['house_id']) && $_POST['house_id'] == $house['id']) || ($edit_payment && $edit_payment['house_id'] == $house['id']) ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($house['house_number']); ?> - <?php echo htmlspecialchars($house['owner_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
+                                <?php
+                                $selectedHouseId = $_POST['house_id'] ?? ($edit_payment['house_id'] ?? '');
+                                renderHouseOptions($houseGroups, $selectedHouseId);
+                                ?>
                             </select>
                         </div>
                         

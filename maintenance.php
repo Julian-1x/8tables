@@ -1,6 +1,8 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once __DIR__ . '/includes/house_options.php';
+require_once __DIR__ . '/includes/house_validation.php';
 
 if (!isset($_SESSION['username']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: Login/login.php");
@@ -34,13 +36,18 @@ function addAuditSafe($db, $userId, $action, $desc) {
 /* ---------------- Handle New Maintenance Request ---------------- */
 if (isset($_POST['submit_request'])) {
     try {
+        $houseId = (int) ($_POST['house_id'] ?? 0);
+        if ($houseId <= 0 || !isHouseOccupied($db, $houseId)) {
+            throw new Exception("Cannot create maintenance request for an empty/vacant house.");
+        }
+
         $query = "INSERT INTO maintenance_requests 
                     (house_id, resident_id, title, description, priority, status)
                   VALUES (:house_id, :resident_id, :title, :description, :priority, :status)";
         $stmt = $db->prepare($query);
 
         $stmt->execute([
-            ":house_id" => $_POST['house_id'],
+            ":house_id" => $houseId,
             ":resident_id" => !empty($_POST['resident_id']) ? $_POST['resident_id'] : null,
             ":title" => $_POST['title'],
             ":description" => $_POST['description'],
@@ -91,8 +98,13 @@ $stmt->execute();
 $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 /* ---------------- Fetch Houses & Residents For Form ---------------- */
-$houses = $db->query("SELECT id, house_number FROM houses WHERE is_deleted = 0 ORDER BY house_number ASC")
+$houses = $db->query("SELECT id, house_number, owner_name
+                      FROM houses
+                      WHERE is_deleted = 0
+                        AND (status = 'Occupied' OR TRIM(COALESCE(owner_name, '')) <> '')
+                      ORDER BY house_number ASC")
              ->fetchAll(PDO::FETCH_ASSOC);
+$houseGroups = groupHousesForDropdown($houses);
 
 $residents = $db->query("SELECT id, name FROM residents WHERE is_deleted = 0 ORDER BY name ASC")
                 ->fetchAll(PDO::FETCH_ASSOC);
@@ -129,11 +141,7 @@ $residents = $db->query("SELECT id, name FROM residents WHERE is_deleted = 0 ORD
             <label>House</label>
             <select name="house_id" required>
                 <option value="">Select house</option>
-                <?php foreach ($houses as $h): ?>
-                    <option value="<?php echo $h['id']; ?>">
-                        <?php echo htmlspecialchars($h['house_number']); ?>
-                    </option>
-                <?php endforeach; ?>
+                <?php renderHouseOptions($houseGroups, $_POST['house_id'] ?? ''); ?>
             </select>
 
             <label>Resident (optional)</label>

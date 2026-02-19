@@ -3,7 +3,11 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
+<<<<<<< HEAD
 -- Generation Time: Jan 10, 2026 at 01:47 AM
+=======
+-- Generation Time: Jan 08, 2026 at 03:14 AM
+>>>>>>> 3b6760a (Implement fixed-lot subdivision map, owner assignment, and validations)
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -130,12 +134,16 @@ INSERT INTO `audit_logs` (`id`, `user_id`, `action`, `details`, `ip_address`, `c
 (87, 1, 'ADD_PAYMENT', 'Added payment for house ID: 10 - Amount: 5000', '::1', '2026-01-07 20:04:10'),
 (88, 1, 'ADD_VEHICLE', 'Added vehicle: KYX21', '::1', '2026-01-07 20:04:34'),
 (89, 1, 'CREATE_MAINTENANCE', 'Created maintenance request: CUTTING GRASS', '::1', '2026-01-07 20:04:56'),
+<<<<<<< HEAD
 (90, 1, 'USER_LOGIN', 'User admin logged in successfully', '::1', '2026-01-07 20:23:14'),
 (91, 1, 'USER_LOGIN', 'User admin logged in successfully', '::1', '2026-01-10 08:27:46'),
 (92, 1, 'USER_LOGOUT', 'User admin logged out', '::1', '2026-01-10 08:27:55'),
 (93, 1, 'USER_LOGIN', 'User admin logged in successfully', '::1', '2026-01-10 08:28:01'),
 (94, 1, 'ADD_HOUSE', 'Added house: BLOCK 13 LOT31-32 - Owner: Jimenez', '::1', '2026-01-10 08:28:10'),
 (95, 1, 'USER_LOGOUT', 'User admin logged out', '::1', '2026-01-10 08:28:12');
+=======
+(90, 1, 'USER_LOGIN', 'User admin logged in successfully', '::1', '2026-01-07 20:23:14');
+>>>>>>> 3b6760a (Implement fixed-lot subdivision map, owner assignment, and validations)
 
 -- --------------------------------------------------------
 
@@ -169,8 +177,12 @@ INSERT INTO `houses` (`id`, `house_number`, `owner_name`, `contact_number`, `sta
 (7, 'BLOCK 13 LOT 16-17', 'Lalay', NULL, 'Occupied', 1, '2025-10-22 01:12:37', NULL, '2025-10-22 01:17:25'),
 (8, 'DASDSA', 'DSADAS', NULL, 'Occupied', 1, '2026-01-05 23:32:35', NULL, '2026-01-07 20:02:06'),
 (9, 'BLOCK 18 LOT 10-12', 'Alexander Julian Balaba', NULL, 'Occupied', 1, '2026-01-07 19:21:49', NULL, '2026-01-07 20:02:04'),
+<<<<<<< HEAD
 (10, 'BLOCK 13 LOT 31-32', 'Misty Kazwell', NULL, 'Occupied', 0, '2026-01-07 20:03:08', NULL, NULL),
 (11, 'BLOCK 13 LOT31-32', 'Jimenez', NULL, 'Occupied', 0, '2026-01-10 08:28:10', NULL, NULL);
+=======
+(10, 'BLOCK 13 LOT 31-32', 'Misty Kazwell', NULL, 'Occupied', 0, '2026-01-07 20:03:08', NULL, NULL);
+>>>>>>> 3b6760a (Implement fixed-lot subdivision map, owner assignment, and validations)
 
 -- --------------------------------------------------------
 
@@ -413,13 +425,21 @@ ALTER TABLE `vehicles`
 -- AUTO_INCREMENT for table `audit_logs`
 --
 ALTER TABLE `audit_logs`
+<<<<<<< HEAD
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=96;
+=======
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=91;
+>>>>>>> 3b6760a (Implement fixed-lot subdivision map, owner assignment, and validations)
 
 --
 -- AUTO_INCREMENT for table `houses`
 --
 ALTER TABLE `houses`
+<<<<<<< HEAD
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+=======
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+>>>>>>> 3b6760a (Implement fixed-lot subdivision map, owner assignment, and validations)
 
 --
 -- AUTO_INCREMENT for table `maintenance_requests`

@@ -13,6 +13,7 @@ $db = $database->getConnection();
 // Initialize counts with default values
 $counts = [
     'houses' => 0,
+    'total_fixed_lots' => 35,
     'residents' => 0,
     'vehicles' => 0,
     'payments_this_month' => 0,
@@ -22,8 +23,13 @@ $counts = [
 $error = "";
 
 try {
-    // Count houses
-    $query = "SELECT COUNT(*) as count FROM houses WHERE is_deleted = 0";
+    // Count occupied houses only (owner assigned) for fixed lot format Block XX Lot XX
+    $query = "SELECT COUNT(*) as count
+              FROM houses
+              WHERE is_deleted = 0
+                AND owner_name IS NOT NULL
+                AND TRIM(owner_name) <> ''
+                AND house_number REGEXP '^Block [0-9]{2} Lot [0-9]{2}$'";
     $stmt = $db->prepare($query);
     $stmt->execute();
     $counts['houses'] = $stmt->fetch(PDO::FETCH_ASSOC)['count'] ?? 0;
@@ -220,9 +226,9 @@ try {
 
     <div class="dashboard-cards">
         <div class="card houses">
-            <div class="card-label">Total Houses</div>
+            <div class="card-label">Occupied Houses</div>
             <div class="card-number"><?php echo $counts['houses']; ?></div>
-            <div>🏠 Properties</div>
+            <div>Out of <?php echo $counts['total_fixed_lots']; ?> fixed lots</div>
         </div>
 
         <div class="card residents">
